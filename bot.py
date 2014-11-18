@@ -77,7 +77,8 @@ if __name__ == '__main__':
         try:
             user_in = raw_input("> ")
         except EOFError:
-            sys.exit("\n")
+            sys.exit('bye!')
 
-        answer = generate_sentence(user_in, CHAIN_LENGTH).strip()
-        print(answer if answer else '...')
+        if user_in:
+            answer = generate_sentence(user_in, CHAIN_LENGTH).strip()
+            print(answer if answer else '...')
