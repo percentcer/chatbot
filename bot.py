@@ -2,10 +2,15 @@
 from collections import defaultdict
 import random
 import sys
+import tweepy
+import argparse
+
 
 markov = defaultdict(list)
 STOP_WORD = '\n'
 CHAIN_LENGTH = 2
+MAX_TWEETS_PER_CALL = 200
+MAX_TWEETS = 3200
 
 
 def add_to_brain(phrase, chain_length, write_to_file=False):
@@ -39,7 +44,7 @@ def generate_sentence(phrase, chain_length, max_words=10000):
     # filter for all non terminal responses in case we run into a dead end
     all_non_terminal_responses = [v for v in markov.values() if set(v) != {'\n'}]
     # loop until we terminate from a stop word (likely) or hit max_words (unlikely)
-    for i in xrange(max_words):
+    for i in range(max_words):
         response_path = markov[tuple(bufr)]
         if not response_path:
             # this is a bit of an abstraction leak.  if we miss on the defaultdict key, it creates an entry
@@ -56,29 +61,67 @@ def generate_sentence(phrase, chain_length, max_words=10000):
         del bufr[0]
         bufr.append(next_word)
 
-    return ' '.join(response)
+    response = response or ['...']
+    return ' '.join(response).strip()
 
 
-def user_sentences(name):
-    nametag = '<{0}>'.format(name)
-    with open("/usr/home/sdmiller/text/irc/DWA-#anim_quad.log") as source:
-        return [l.split(nametag)[1].strip() for l in source.readlines() if nametag in l]
+def user_tweets(name, api):
 
-if __name__ == '__main__':
-    username = sys.argv[1]
-    sentences = user_sentences(username)
-    print "GENERATING {0}.BOT FROM {1} IRC MESSAGES...".format(username.upper(), len(sentences))
+    user = api.get_user(name)
+    total = user.statuses_count if user.statuses_count < MAX_TWEETS else MAX_TWEETS
 
-    for s in sentences:
+    print("grabbing all tweets from {0} ({1})".format(user.screen_name, total))
+
+    ret = []
+
+    public_tweets = api.user_timeline(id=name, count=MAX_TWEETS_PER_CALL)
+    count = len(public_tweets)
+    while public_tweets:
+        ret.extend([t.text for t in public_tweets])
+        min_id = min(public_tweets, key=lambda t: t.id).id
+        print("{0:.2f}% complete".format(count / total * 100))
+        public_tweets = api.user_timeline(id=name, count=MAX_TWEETS_PER_CALL, max_id=min_id - 1)
+        count += len(public_tweets)
+
+    return ret
+
+
+def authenticate_twitter(consumer_key, consumer_secret, access_token, access_token_secret):
+    auth = tweepy.OAuthHandler(consumer_key, consumer_secret)
+    auth.set_access_token(access_token, access_token_secret)
+    return tweepy.API(auth)
+
+
+def authenticate_facebook():
+    pass
+
+
+def main(clargs):
+    api = authenticate_twitter(clargs.ck, clargs.cs, clargs.at, clargs.ats)
+    tweets = user_tweets(clargs.username, api)
+
+    print("GENERATING {0}.BOT...".format(clargs.username.upper(), len(tweets)))
+
+    for s in tweets:
         add_to_brain(s.upper(), CHAIN_LENGTH)
 
     user_in = True
     while user_in:
         try:
-            user_in = raw_input("> ")
+            user_in = input("> ")
         except EOFError:
-            sys.exit('bye!')
+            break
 
         if user_in:
-            answer = generate_sentence(user_in, CHAIN_LENGTH).strip()
-            print(answer if answer else '...')
+            print(generate_sentence(user_in, CHAIN_LENGTH))
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Generate a bot based on a twitter user.')
+    parser.add_argument('username', metavar='username', type=str, help='twitter username')
+    parser.add_argument('ck', metavar='consumer_key', help='OAuth consumer key')
+    parser.add_argument('cs', metavar='consumer_key_secret', help='OAuth consumer key secret')
+    parser.add_argument('at', metavar='access_token', help='OAuth access token')
+    parser.add_argument('ats', metavar='access_token_secret', help='OAuth access token secret')
+    args = parser.parse_args()
+    main(args)
