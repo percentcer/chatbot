@@ -1,7 +1,6 @@
 #!/usr/local/bin/python
 from collections import defaultdict
 import random
-import sys
 import tweepy
 import argparse
 
