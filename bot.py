@@ -1,4 +1,4 @@
-#!/usr/local/bin/python
+#!/usr/bin/env python3
 from collections import defaultdict
 import random
 import tweepy
@@ -64,23 +64,26 @@ def generate_sentence(phrase, chain_length, max_words=10000):
     return ' '.join(response).strip()
 
 
-def user_tweets(name, api):
+def user_tweets(user, max_tweets, api):
+    max_tweets = min(max_tweets, MAX_TWEETS)
 
-    user = api.get_user(name)
-    total = user.statuses_count if user.statuses_count < MAX_TWEETS else MAX_TWEETS
+    total = user.statuses_count if user.statuses_count < max_tweets else max_tweets
 
-    print("grabbing all tweets from {0} ({1})".format(user.screen_name, total))
+    print("grabbing all tweets from {0}".format(user.screen_name))
 
     ret = []
 
-    public_tweets = api.user_timeline(id=name, count=MAX_TWEETS_PER_CALL)
-    count = len(public_tweets)
-    while public_tweets:
+    remaining_tweets = max_tweets
+    max_id = None
+    while remaining_tweets:
+        public_tweets = api.user_timeline(id=user.screen_name,
+                                          count=min(MAX_TWEETS_PER_CALL, remaining_tweets),
+                                          max_id=max_id)
         ret.extend([t.text for t in public_tweets])
         min_id = min(public_tweets, key=lambda t: t.id).id
-        print("{0:.2f}% complete".format(count / total * 100))
-        public_tweets = api.user_timeline(id=name, count=MAX_TWEETS_PER_CALL, max_id=min_id - 1)
-        count += len(public_tweets)
+        max_id = min_id - 1
+        remaining_tweets -= min(MAX_TWEETS_PER_CALL, remaining_tweets)
+        print("{0:.2f}% complete".format((1 - (remaining_tweets / total)) * 100))
 
     return ret
 
@@ -97,9 +100,12 @@ def authenticate_facebook():
 
 def main(clargs):
     api = authenticate_twitter(clargs.ck, clargs.cs, clargs.at, clargs.ats)
-    tweets = user_tweets(clargs.username, api)
+    users = [api.get_user(b) for b in clargs.users]
 
-    print("GENERATING {0}.BOT...".format(clargs.username.upper(), len(tweets)))
+    least_prolific_user = min(users, key=lambda u: u.statuses_count)
+    tweets = [tweet for user in users for tweet in user_tweets(user, least_prolific_user.statuses_count, api)]
+
+    print("GENERATING {0}.BOT...".format('.'.join([name.upper() for name in clargs.users])))
 
     for s in tweets:
         add_to_brain(s.upper(), CHAIN_LENGTH)
@@ -117,7 +123,7 @@ def main(clargs):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Generate a bot based on a twitter user.')
-    parser.add_argument('username', metavar='username', type=str, help='twitter username')
+    parser.add_argument('users', metavar='username', type=str, help='twitter username(s)', nargs='+')
     parser.add_argument('ck', metavar='consumer_key', help='OAuth consumer key')
     parser.add_argument('cs', metavar='consumer_key_secret', help='OAuth consumer key secret')
     parser.add_argument('at', metavar='access_token', help='OAuth access token')
