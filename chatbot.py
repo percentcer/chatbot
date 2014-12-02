@@ -12,33 +12,38 @@ MAX_TWEETS_PER_CALL = 200
 MAX_TWEETS = 3200
 
 
-def add_to_brain(phrase, chain_length, write_to_file=False):
-    if write_to_file:
-        with open('training_text.txt', 'a') as f:
-            f.write(phrase + '\n')
+def add_to_brain(phrase, chain_length=CHAIN_LENGTH):
     bufr = [STOP_WORD] * chain_length
     for word in phrase.split():
         markov[tuple(bufr)].append(word)
         del bufr[0]
-        bufr.append(word)
+        # store the keys as uppercase for case insensitivity
+        bufr.append(word.upper())
     markov[tuple(bufr)].append(STOP_WORD)
 
 
-def generate_sentence(phrase, chain_length, max_words=10000):
-    # capitalize the input phrase because that's how we've stored them in the brain
-    phrase = phrase.upper()
-    parts = phrase.split()
+def generate_sentence(phrase, chain_length=CHAIN_LENGTH, max_words=10000):
+    parts = phrase[:].split()
+    # pad out the input phrase, if necessary
+    if len(parts) < chain_length:
+        parts = [STOP_WORD] * (chain_length - len(parts)) + parts
+    # create an uppercase copy of the parts because that's how they're stored in the brain
+    parts_upper = [w.upper() for w in parts]
+
     # get all overlapping n-tuples from the sentence parts, where n is chain_length
     all_tuples = [tuple(values) for values in zip(*[parts[i:] for i in range(chain_length)])]
+    all_tuples_upper = [tuple(values) for values in zip(*[parts_upper[i:] for i in range(chain_length)])]
+    to_original = dict(zip(all_tuples_upper, all_tuples))
+
     # generate a larger list of n-tuples where tuples with larger response pools have more representation
     # (adding, as one element, the initial STOP_WORD tuple for some spice and to ward against an empty list)
-    weighted_tuples = [t for tup in all_tuples for t in [tup] * len(markov[tup])] + [(STOP_WORD,) * chain_length]
+    weighted_tuples = [t for tup in all_tuples_upper for t in [tup] * len(markov[tup])] + [(STOP_WORD,) * chain_length]
     # pick from that list to kick off our sentence
     start_path = random.choice(weighted_tuples)
 
     # create two copies of it, one as the eventual response and one as the working buffer
     bufr = list(start_path)
-    response = bufr[:]
+    response = list(to_original.get(start_path, start_path))
 
     # filter for all non terminal responses in case we run into a dead end
     all_non_terminal_responses = [v for v in markov.values() if set(v) != {'\n'}]
@@ -58,7 +63,7 @@ def generate_sentence(phrase, chain_length, max_words=10000):
         # otherwise keep going, append the next word to our eventual response and rotate the working buffer
         response.append(next_word)
         del bufr[0]
-        bufr.append(next_word)
+        bufr.append(next_word.upper())
 
     response = response or ['...']
     return ' '.join(response).strip()
@@ -98,18 +103,18 @@ def authenticate_facebook():
     pass
 
 
-def main(clargs):
-    api = authenticate_twitter(clargs.ck, clargs.cs, clargs.at, clargs.ats)
-    users = [api.get_user(b) for b in clargs.users]
+def init(api, users):
+    users = [api.get_user(b) for b in users]
 
     least_prolific_user = min(users, key=lambda u: u.statuses_count)
     tweets = [tweet for user in users for tweet in user_tweets(user, least_prolific_user.statuses_count, api)]
 
-    print("GENERATING {0}.BOT...".format('.'.join([name.upper() for name in clargs.users])))
-
+    print("GENERATING {0}.BOT...".format('.'.join([name.upper() for name in users])))
     for s in tweets:
-        add_to_brain(s.upper(), CHAIN_LENGTH)
+        add_to_brain(s)
 
+
+def mainloop():
     user_in = True
     while user_in:
         try:
@@ -118,7 +123,7 @@ def main(clargs):
             break
 
         if user_in:
-            print(generate_sentence(user_in, CHAIN_LENGTH))
+            print(generate_sentence(user_in))
 
 
 if __name__ == '__main__':
@@ -129,4 +134,5 @@ if __name__ == '__main__':
     parser.add_argument('at', metavar='access_token', help='OAuth access token')
     parser.add_argument('ats', metavar='access_token_secret', help='OAuth access token secret')
     args = parser.parse_args()
-    main(args)
+    init(authenticate_twitter(args.ck, args.cs, args.at, args.ats), args.users)
+    mainloop()
