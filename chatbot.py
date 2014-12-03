@@ -3,7 +3,7 @@ from collections import defaultdict
 import random
 import tweepy
 import argparse
-
+import pickle
 
 markov = defaultdict(list)
 STOP_WORD = '\n'
@@ -70,11 +70,15 @@ def generate_sentence(phrase, chain_length=CHAIN_LENGTH, max_words=10000):
 
 
 def user_tweets(user, max_tweets, api):
+    try:
+        with open("{0}.tweets".format(user.screen_name), 'rb') as f:
+            return pickle.load(f)
+    except IOError:
+        print("grabbing all tweets from {0}".format(user.screen_name))
+
     max_tweets = min(max_tweets, MAX_TWEETS)
 
     total = user.statuses_count if user.statuses_count < max_tweets else max_tweets
-
-    print("grabbing all tweets from {0}".format(user.screen_name))
 
     ret = []
 
@@ -89,6 +93,9 @@ def user_tweets(user, max_tweets, api):
         max_id = min_id - 1
         remaining_tweets -= min(MAX_TWEETS_PER_CALL, remaining_tweets)
         print("{0:.2f}% complete".format((1 - (remaining_tweets / total)) * 100))
+
+    with open("{0}.tweets".format(user.screen_name), 'wb') as w:
+        pickle.dump(ret, w)
 
     return ret
 
@@ -109,7 +116,7 @@ def init(api, users):
     least_prolific_user = min(users, key=lambda u: u.statuses_count)
     tweets = [tweet for user in users for tweet in user_tweets(user, least_prolific_user.statuses_count, api)]
 
-    print("GENERATING {0}.BOT...".format('.'.join([name.upper() for name in users])))
+    print("GENERATING {0}.BOT...".format('.'.join([n.screen_name.upper() for n in users])))
     for s in tweets:
         add_to_brain(s)
 
