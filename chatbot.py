@@ -122,8 +122,7 @@ def init(api, users):
 
 
 def mainloop():
-    user_in = True
-    while user_in:
+    while True:
         try:
             user_in = input("> ")
         except EOFError:
@@ -131,6 +130,8 @@ def mainloop():
 
         if user_in:
             print(generate_sentence(user_in))
+        else:
+            break
 
 
 if __name__ == '__main__':
