@@ -71,8 +71,10 @@ def generate_sentence(phrase, chain_length=CHAIN_LENGTH, max_words=10000):
 
 
 def user_tweets(user, max_tweets, api):
+    cache_file = os.path.join(os.path.abspath(os.path.dirname(__file__)),
+                              "{0}.tweets".format(user.screen_name))
     try:
-        with open("{0}.tweets".format(user.screen_name), 'rb') as f:
+        with open(cache_file, 'rb') as f:
             return pickle.load(f)
     except IOError:
         print("grabbing all tweets from {0}".format(user.screen_name))
@@ -95,8 +97,8 @@ def user_tweets(user, max_tweets, api):
         remaining_tweets -= min(MAX_TWEETS_PER_CALL, remaining_tweets)
         print("{0:.2f}% complete".format((1 - (remaining_tweets / total)) * 100))
 
-    with open("{0}.tweets".format(user.screen_name), 'wb') as w:
-        print("writing to {}".format(os.path.abspath(w.name)))
+    with open(cache_file, 'wb') as w:
+        print("writing to {}".format(cache_file))
         pickle.dump(ret, w)
 
     return ret
