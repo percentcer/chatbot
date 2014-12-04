@@ -4,6 +4,7 @@ import random
 import tweepy
 import argparse
 import pickle
+import os
 
 markov = defaultdict(list)
 STOP_WORD = '\n'
@@ -95,6 +96,7 @@ def user_tweets(user, max_tweets, api):
         print("{0:.2f}% complete".format((1 - (remaining_tweets / total)) * 100))
 
     with open("{0}.tweets".format(user.screen_name), 'wb') as w:
+        print("writing to {}".format(os.path.abspath(w.name)))
         pickle.dump(ret, w)
 
     return ret
