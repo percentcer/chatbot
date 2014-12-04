@@ -1,1 +1,1 @@
-from chatbot import *
+from .chatbot import init, generate_sentence, authenticate_twitter, authenticate_facebook
